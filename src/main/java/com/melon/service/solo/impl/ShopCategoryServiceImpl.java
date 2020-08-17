@@ -4,12 +4,14 @@ import com.melon.entity.bo.HeadLine;
 import com.melon.entity.bo.ShopCategory;
 import com.melon.entity.dto.Result;
 import com.melon.service.solo.ShopCategoryService;
+import org.melonframework.core.annotation.Service;
 
 import java.util.List;
 
 /**
  * @author czm 2020/8/11.
  */
+@Service
 public class ShopCategoryServiceImpl implements ShopCategoryService {
     @Override
     public Result<Boolean> addShopCategory(ShopCategory shopCategory) {

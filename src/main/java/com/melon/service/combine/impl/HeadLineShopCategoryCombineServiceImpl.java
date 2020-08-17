@@ -7,15 +7,21 @@ import com.melon.entity.dto.Result;
 import com.melon.service.combine.HeadLineShopCategoryCombineService;
 import com.melon.service.solo.HeadLineService;
 import com.melon.service.solo.ShopCategoryService;
+import org.melonframework.core.annotation.Service;
+import org.melonframework.inject.annotation.Autowired;
 
 import java.util.List;
 
 /**
  * @author czm 2020/8/11.
  */
+@Service
 public class HeadLineShopCategoryCombineServiceImpl implements HeadLineShopCategoryCombineService {
 
+    @Autowired
     private HeadLineService headLineService;
+
+    @Autowired
     private ShopCategoryService shopCategoryService;
 
     @Override

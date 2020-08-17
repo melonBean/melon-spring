@@ -3,6 +3,8 @@ package com.melon.controller.superadmin;
 import com.melon.entity.bo.HeadLine;
 import com.melon.entity.dto.Result;
 import com.melon.service.solo.HeadLineService;
+import org.melonframework.core.annotation.Controller;
+import org.melonframework.inject.annotation.Autowired;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -11,8 +13,10 @@ import java.util.List;
 /**
  * @author czm 2020/8/11.
  */
+@Controller
 public class HeadLineOperationController {
 
+    @Autowired
     private HeadLineService headLineService;
 
     public Result<Boolean> addHeadLine(HttpServletRequest request, HttpServletResponse response) {

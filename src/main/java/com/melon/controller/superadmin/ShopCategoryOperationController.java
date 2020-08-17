@@ -5,6 +5,8 @@ import com.melon.entity.bo.ShopCategory;
 import com.melon.entity.dto.Result;
 import com.melon.service.solo.HeadLineService;
 import com.melon.service.solo.ShopCategoryService;
+import org.melonframework.core.annotation.Controller;
+import org.melonframework.inject.annotation.Autowired;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -13,8 +15,10 @@ import java.util.List;
 /**
  * @author czm 2020/8/11.
  */
+@Controller
 public class ShopCategoryOperationController {
 
+    @Autowired
     private ShopCategoryService ShopCategoryService;
 
     public Result<Boolean> addShopCategory(HttpServletRequest request, HttpServletResponse response) {

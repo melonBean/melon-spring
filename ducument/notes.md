@@ -400,3 +400,539 @@ java.lang.reflect类库里面主要的类：
 ##### 4-12 本章小结
 
 ![](images\IOC3.png)
+
+
+
+
+
+#### 第5章 自研框架IoC容器的实现 【实战了解SpringIOC的脉络】
+
+##### 5-1 实现思路概述以及注解标签的创建
+
+![](images\IOC容器实现.png)
+
+###### 5-1-1 框架具备的最基本功能
+
+- <span style="color:red">解析配置</span>
+- <span style="color:red">定位与注册对象</span>
+- <span style="color:red">注入对象</span>
+- <span style="color:red">提供通用的工具类</span>
+
+
+
+###### 5-1-2 IoC容器的实现
+
+**需要实现的点：**
+
+![](images\IOC容器实现2.png)
+
+
+
+###### 5-1-3 注解的创建
+
+```java
+package org.melonframework.core.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Controller {
+}
+
+```
+
+```java
+package org.melonframework.core.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Service {
+}
+
+```
+
+```java
+package org.melonframework.core.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Repository {
+}
+
+```
+
+```java
+package org.melonframework.core.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Component {
+}
+
+```
+
+
+
+##### 5-2 提取标记对象
+
+**实现思路：**
+
+- <span style="color:red">指定范围，获取范围内的所有类</span>
+- <span style="color:red">遍历所有类，获取被注解标记的类并加载进容器里</span>
+
+
+
+###### 5-2-1 extractPackageClass里面需要完成的事情
+
+- <span style="color:red">获取到类的加载器</span>
+  - 获取项目发布的实际路径
+- <span style="color:red">通过类加载器获取到加载的资源信息</span>
+- <span style="color:red">依据不同的资源类型，采用不同的方式获取资源的集合</span>
+
+
+
+###### 5-2-2 类加载器ClassLoader
+
+![](images\IOC容器实现3.png)
+
+- 根据一个指定的类的名称，找到或者生成其对应的字节码
+- 加载Java应用所需的资源
+
+
+
+###### 5-2-3 通用资源定位符
+
+**某个资源的唯一地址：**
+
+- 通过获取java.net.URL实例获取协议名、资源名路径等信息
+
+  ![](images\IOC容器实现4.png)
+
+
+
+##### 5-3 关于单例模式
+
+###### 5-3-1 单例模式介绍
+
+**确保一个类只有一个实例，并对外提供统一访问方式：**
+
+- <span style="color:red">饿汉模式：类被加载的时候就立即初始化并创建唯一实例。</span>
+- <span style="color:red">懒汉模式：在被客户端首次调用的时候才创建唯一实例</span>
+  - **加入双重检查锁机制的懒汉模式能确保线程安全**
+
+
+
+###### 5-3-2 单例模式的安全性
+
+**使用<span style="color:red">枚举</span>可防止反射和序列化的攻击**
+
+ 
+
+##### 5-7 容器的载体以及容器的加载
+
+**容器的组成部分：**
+
+- <span style="color:red">保存Class对象及其实例的载体</span>
+- <span style="color:red">容器的加载</span>
+- <span style="color:red">容器的操作方式</span>
+
+
+
+```java
+package org.melonframework.core;
+
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.melonframework.core.annotation.Component;
+import org.melonframework.core.annotation.Controller;
+import org.melonframework.core.annotation.Repository;
+import org.melonframework.core.annotation.Service;
+import org.melonframework.util.ClassUtil;
+import org.melonframework.util.ValidationUtil;
+
+import java.lang.annotation.Annotation;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Slf4j
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public class BeanContainer {
+
+    /**
+     * 存放所有被配置标记的目标对象的Map
+     */
+    private final Map<Class<?>, Object> beanMap = new ConcurrentHashMap();
+
+    /**
+     * 容器是否已经加载过bean
+     */
+    private boolean loaded = false;
+
+    /**
+     * 是否已经加载过Bean
+     *
+     * @return 是否已加载
+     */
+    public boolean isLoaded() {
+        return loaded;
+    }
+
+    /**
+     * 获取Bean实例的数量
+     *
+     * @return 数量
+     */
+    public int size() {
+        return beanMap.size();
+    }
+
+    /**
+     * 加载bean的注解列表
+     */
+    private static final List<Class<? extends Annotation>> BEAN_ANNOTATION
+            = Arrays.asList(Component.class, Controller.class, Service.class, Repository.class);
+
+    /**
+     * 获取Bean容器实例
+     *
+     * @return BeanContainer
+     */
+    public static BeanContainer getInstance() {
+        return ContainerHolder.HOLDER.instance;
+    }
+
+    private enum ContainerHolder {
+        /**
+         * 存放BeanContainer的单例
+         */
+        HOLDER;
+        private BeanContainer instance;
+        ContainerHolder() {
+            instance = new BeanContainer();
+        }
+    }
+
+    /**
+     * 扫描加载所有Bean
+     *
+     * @param basePackage 包名
+     */
+    public synchronized void loadBeans(String basePackage) {
+        // 判断bean容器是否被加载过
+        if (isLoaded()) {
+            log.warn("BeanContainer has bean loaded");
+            return;
+        }
+        Set<Class<?>> classSet = ClassUtil.extractPackageClass(basePackage);
+        if (ValidationUtil.isEmpty(classSet)) {
+            log.warn("extract nothing from packageName " + basePackage);
+            return;
+        }
+        for (Class<?> clazz : classSet) {
+            for (Class<? extends Annotation> annotation : BEAN_ANNOTATION) {
+                // 判断类上是否标记了定义的注解
+                if (clazz.isAnnotationPresent(annotation)) {
+                    // 将目标类本身作为键，目标类的实例作为值，放入到beanMap中
+                    beanMap.put(clazz, ClassUtil.newInstance(clazz, true));
+                }
+            }
+        }
+        loaded = true;
+    }
+
+    /**
+     * 添加一个class对象及其Bean实例
+     *
+     * @param clazz Class对象
+     * @param bean Bean实例
+     * @return 原有的Bean实例，没有则返回null
+     */
+    public Object addBean(Class<?> clazz, Object bean) {
+        return beanMap.put(clazz, bean);
+    }
+
+    /**
+     * 移除一个IOC容器管理的对象
+     *
+     * @param clazz Class对象
+     * @return 删除的Bean实例，没有则返回null
+     */
+    public Object removeBean(Class<?> clazz) {
+        return beanMap.remove(clazz);
+    }
+
+    /**
+     * 根据Class对象获取Bean实例
+     *
+     * @param clazz Class对象
+     * @return Bean实例
+     */
+    public Object getBean(Class<?> clazz) {
+        return beanMap.get(clazz);
+    }
+
+    /**
+     * 获取容器管理的所有Class对象集合
+     *
+     * @return Class集合
+     */
+    public Set<Class<?>> getClasses() {
+        return beanMap.keySet();
+    }
+
+    /**
+     * 获取所有Bean集合
+     *
+     * @return Bean集合
+     */
+    public Set<Object> getBeans() {
+        return new HashSet<>(beanMap.values());
+    }
+
+    /**
+     * 根据注解筛选出Bean的Class集合
+     *
+     * @param annotation 注解
+     * @return Class集合
+     */
+    public Set<Class<?>> getClassesByAnnotation(Class<? extends Annotation> annotation) {
+        // 1、获取beanMap的所有class对象
+        Set<Class<?>> keySet = getClasses();
+        if (ValidationUtil.isEmpty(keySet)) {
+            log.warn("nothing in beanMap");
+            return null;
+        }
+
+        // 2、通过注解筛选被注解标记的class对象，并添加到classSet里
+        Set<Class<?>> classSet = new HashSet<>();
+        for (Class<?> clazz : keySet) {
+            // 类是否被相关的注解标记
+            if (clazz.isAnnotationPresent(annotation)) {
+                classSet.add(clazz);
+            }
+        }
+        return classSet.size() > 0 ? classSet : null;
+    }
+
+    /**
+     * 根据接口或者父类获取实现类或者子类的Class集合，不包括其本身
+     *
+     * @param interfaceOrClass 注解
+     * @return Class集合
+     */
+    public Set<Class<?>> getClassesBySuper(Class<?> interfaceOrClass) {
+        // 1、获取beanMap的所有class对象
+        Set<Class<?>> keySet = getClasses();
+        if (ValidationUtil.isEmpty(keySet)) {
+            log.warn("nothing in beanMap");
+            return null;
+        }
+
+        // 2、判断keySet里的元素是否是传入的接口或者类的子类，如果是，就将其添加到classSet里
+        Set<Class<?>> classSet = new HashSet<>();
+        for (Class<?> clazz : keySet) {
+            // 判断keySet里的元素是否是传入的接口或者类的子类
+            if (interfaceOrClass.isAssignableFrom(clazz) && !clazz.equals(interfaceOrClass)) {
+                classSet.add(clazz);
+            }
+        }
+        return classSet.size() > 0 ? classSet : null;
+    }
+}
+
+```
+
+
+
+
+
+###### 5-7-1 实现容器的加载
+
+**实现思路：**
+
+- 配置的管理与获取（annotation）
+- 获取指定范围内的Class对象
+- 依据配置提取Class对象，连同实例一并存入容器
+
+
+
+###### 5-7-2 实现容器的操作方式
+
+**涉及到容器的增删改查：**
+
+- 增加、删除操作
+- 根据Class获取对应实例
+- 获取所有的Class和实例
+- 通过注解来获取被注解标注的Class
+- 通过超类获取对应的子类Class
+- 获取容器载体保存Class的数量
+
+
+
+###### 5-7-3 容器管理Bean的模式
+
+**默认皆为单例：**
+
+![](images\IOC容器实现5.png)
+
+
+
+**Spring框架有多种作用域：**
+
+- <span style="color:red">singleton</span>
+- prototype
+- request
+- session
+- globalsession
+
+
+
+##### 5-8 实现容器的依赖注入
+
+**目前容器里面管理的Bean实例仍可能是不完备的：**
+
+- 实例里面某些必须的成员变量还没有被创建出来
+
+**实现思路：**
+
+- 定义相关的注解标签
+
+- 实现创建被注解标记的成员变量实例，并将其注入到成员变量里
+
+- 依赖注入的使用
+
+  
+
+```java
+package org.melonframework.inject;
+
+import lombok.extern.slf4j.Slf4j;
+import org.melonframework.core.BeanContainer;
+import org.melonframework.inject.annotation.Autowired;
+import org.melonframework.util.ClassUtil;
+import org.melonframework.util.ValidationUtil;
+
+import java.lang.reflect.Field;
+import java.util.Set;
+
+@Slf4j
+public class DependencyInjector {
+
+    /**
+     * Bean容器
+     */
+    private BeanContainer beanContainer;
+
+    public DependencyInjector() {
+        beanContainer = BeanContainer.getInstance();
+    }
+
+    /**
+     * 执行Ioc
+     */
+    public void doIoc() {
+        // 1、遍历Bean容器中所有的Class对象
+        if (ValidationUtil.isEmpty(beanContainer.getClasses())) {
+            log.warn("empty classes in BeanContainer");
+            return;
+        }
+
+        // 2、遍历Class对象的所有成员变量
+        for(Class<?> clazz: beanContainer.getClasses()) {
+            Field[] fields = clazz.getDeclaredFields();
+            if (ValidationUtil.isEmpty(fields)) {
+                continue;
+            }
+            // 3、找出被Autowired标记的成员变量
+            for (Field field : fields) {
+                if (field.isAnnotationPresent(Autowired.class)) {
+                    Autowired autowired = field.getAnnotation(Autowired.class);
+                    String autowiredValue = autowired.value();
+                    // 4、获取这些成员变量的类型
+                    Class<?> fieldClass = field.getType();
+                    // 5、获取这些成员变量的类型在容器里对应的实例
+                    Object filedValue = getFieldInstance(fieldClass, autowiredValue);
+                    if (filedValue == null) {
+                        throw new RuntimeException("unable to inject relevant type, target fieldClass is: " + fieldClass.getName() + autowiredValue);
+                    } else {
+                        // 6、通过反射将对应的成员变量实例注入到成员变量所在的类的实例里
+                        Object targetBean = beanContainer.getBean(clazz);
+                        ClassUtil.setField(field, targetBean, filedValue, true);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据Class在beanContainer里获取其实例或者实现类
+     */
+    private Object getFieldInstance(Class<?> fieldClass, String autowiredValue) {
+        Object filedValue = beanContainer.getBean(fieldClass);
+        if (filedValue != null) {
+            return filedValue;
+        } else {
+            Class<?> implementedClass = getImplementClass(fieldClass, autowiredValue);
+            if (implementedClass != null) {
+                return beanContainer.getBean(implementedClass);
+            } else {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * 获取接口的实现类
+     */
+    private Class<?> getImplementClass(Class<?> fieldClass, String autowiredValue) {
+        Set<Class<?>> classSet = beanContainer.getClassesBySuper(fieldClass);
+        if (!ValidationUtil.isEmpty(classSet)) {
+            if (ValidationUtil.isEmpty(autowiredValue)) {
+                if (classSet.size() == 1) {
+                    return classSet.iterator().next();
+                } else {
+                    // 如果多于两个实现类且用户未指定其中一个实现类，则抛出异常
+                    throw new RuntimeException("multiple implemented classes for " + fieldClass.getName() + ". please set @Autowired's value to pick one");
+                }
+            } else {
+                for (Class<?> clazz : classSet) {
+                    if (autowiredValue.equals(clazz.getSimpleName())) {
+                        return clazz;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+}
+
+```
+
+
+
+
+
+##### 5-11 本章小结
+
+![](images\IOC容器实现6.png)
