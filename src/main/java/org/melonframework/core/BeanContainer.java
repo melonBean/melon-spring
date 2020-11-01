@@ -3,6 +3,7 @@ package org.melonframework.core;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.melonframework.aop.annotation.Aspect;
 import org.melonframework.core.annotation.Component;
 import org.melonframework.core.annotation.Controller;
 import org.melonframework.core.annotation.Repository;
@@ -53,7 +54,8 @@ public class BeanContainer {
      * 加载bean的注解列表
      */
     private static final List<Class<? extends Annotation>> BEAN_ANNOTATION
-            = Arrays.asList(Component.class, Controller.class, Service.class, Repository.class);
+            = Arrays.asList(Component.class, Controller.class, Service.class,
+                Repository.class, Aspect.class);
 
     /**
      * 获取Bean容器实例

@@ -936,3 +936,1264 @@ public class DependencyInjector {
 ##### 5-11 本章小结
 
 ![](images\IOC容器实现6.png)
+
+
+
+
+
+#### 第6章 SpringIoC容器的源码解析
+
+##### 6-1 挖掘切入源码的线索
+
+**主线逻辑：**
+
+- **解析配置**
+- **定位与注册对象**
+- **注入对象**
+
+
+
+**解决了关键的问题：将对象之间的关系转而用配置来管理：**
+
+- <span style="color:red">依赖注入</span>：依赖关系在Spring的IoC容器中管理
+- <span style="color:red">通过把对象包装在Bean中以达到管理对象和进行额外操作的目的</span>
+
+
+
+##### 6-2 Bean与BeanDefinition
+
+**Bean：**
+
+- Bean的本质就是java对象，只是这个对象的声明周期由容器来管理
+- 不需要为了创建Bean而在原来的java类上添加任何额外的限制
+- 对java对象的控制方式体现在配置上
+
+
+
+**BeanDefinition---Bean的定义（类似java.lang.class对对象的描述）：**
+
+- <span style="color:red">作用范围scope（@Scope）</span>
+- <span style="color:red">懒加载lazy-init（@Lazy）：决定Bean实例是否延迟加载</span>
+- <span style="color:red">首选primary（@Primary）：设置为true的bean会是优先的实现类</span>
+- factory-bean和factory-method（@Configuration和@Bean）
+
+
+
+**容器初始化主要做的事情（主要脉络）：**
+
+![](images\SpringIOC1.png)
+
+
+
+##### 6-3 关于BeanDefinition
+
+![](images\SpringIOC2.png)
+
+![](images\SpringIOC3.png)
+
+
+
+##### 6-4 BeanFactory和FactoryBean
+
+**BeanFactory：**
+
+- <span style="color:red">Bean工厂，IOC容器的顶级接口，所有的IOC容器都实现了此接口，提供了一些关于IOC容器操作的基本方法。</span>
+
+**FactoryBean：**
+
+- <span style="color:red">工厂Bean，本质为Bean对象，通过bean的id获取到的实质上是调用的FactoryBean的getObject返回的对象，可以通过该方法定制Bean，如若需要获取该FactoryBean，需要id为 &xxx 。</span>
+
+
+
+##### 6-5 关于简单容器
+
+![](images\SpringIOC4.png)
+
+
+
+- **基于单一职责原则，不同的Factory接口提供了不同的功能。**
+  - <span style="color:red">DefaultListableBeanFactory中的**beanDefinitionMap**，提供了对beanDefinition的操作。</span>
+- **ApplicationContext是高级容器接口，广泛使用的容器，提供了许多面向实际应用的功能。**
+
+
+
+**术语补充：**
+
+- 组件扫描：自动发现应用容器中需要创建的Bean
+- 自动装配：自动满足Bean之间的依赖
+
+
+
+##### 6-6 关于高级容器
+
+![](images\SpringIOC5.png)
+
+**高级容器皆实现了ApplicationContext接口**
+
+**ApplicationContext接口：**
+
+- 实现<span style="color:red">EnvironmentCapable</span>接口
+  - 提供了获取运行时配置环境的方法：getEnvironment();
+- 实现<span style="color:red">ListableBeanFactory</span>接口
+  - 提供可以通过列表的形式管理Bean的方法
+- 实现<span style="color:red">HierarchicalBeanFactory</span>接口
+  - 提供获取层级关系的工厂
+- 实现<span style="color:red">ResourcePatternResolver</span>接口
+  - 提供加载资源的功能
+- 实现<span style="color:red">MessageSource</span>接口
+  - 管理message，提供国际化的功能
+- 实现<span style="color:red">ApplicationEventPublisher</span>接口
+  - 提供事件发布的能力
+
+
+
+##### 6-7 ApplicationContext常用容器
+
+**传统的基于XML配置的经典容器：**
+
+- <span style="color:red">FileSystemXmlApplicationContext</span>：从文件系统加载配置
+- <span style="color:red">ClassPathXmlApplicationContext</span>：从classpath加载配置
+- <span style="color:red">XmlWebApplicationContext</span>：用于Web应用程序的容器
+
+**目前比较流行的容器（基于注解）：**
+
+- <span style="color:red">AnnotationConfigServletWebServerApplicationContext</span>：在SpringBoot模块下
+- <span style="color:red">AnnotationConfigReactiveWebServerApplicationContext</span>：提供响应式编程，在SpringBoot模块下
+- <span style="color:red">AnnocationConfigApplicationContext</span>：spring模块下目前常用的
+
+**容器的共性——<span style="color:red">refresh()</span>方法：**
+
+- 容器初始化、配置解析
+- BeanFactoryPostProcessor和BeanPostProcessor的注册和激活
+- 国际化配置
+- ......
+
+**核心抽象类<span style="color:red">AbstractApplicationContext</span>：**
+
+- 提供了高级容器的绝大部分方法
+- 基于**模板方法模式**，将某些设置下沉至子类，
+
+
+
+##### 6-8 模板方式模式
+
+**围绕抽象类，实现通用逻辑，定义模板结构，部分逻辑由子类实现。**
+
+- <span style="color:red">复用代码</span>
+
+- <span style="color:red">反向控制 </span>
+
+  
+
+![](images\SpringIOC6.png)
+
+
+
+##### 6-9 弄清Resource、ResourceLoader、容器之间的微妙关系
+
+###### 6-9-1 Resource
+
+![](images\SpringIOC7.png)
+
+**根据资源地址自动选择正确的Resource：**
+
+- **强大的加载资源的方式**
+
+  - 自动识别"classpath:"、"file:" 等资源地址前缀
+
+  - 支持自动解析Ant风格带通配符的资源地址
+
+    - Ant：路径匹配表达式，用来对URI进行匹配（类似正则表达式）
+
+      - ? 匹配任何单字符
+
+      - \* 匹配0或任意数量的字符
+
+      - ** 匹配0或者更多的目录
+
+        ![](images\SpringIOC8.png)
+
+
+
+###### 6-9-2 ResourceLoader
+
+**实现不同的Resource加载策略，按需返回特定类型的Resource**
+
+![](images\SpringIOC9.png)
+
+- **DefaultResourceLoader#getResource(String location)**
+- **ResourcePatternResolver**：支持Ant匹配模式
+- 注意：此处有**AbstractApplicationContext，所以高级容器支持统一资源加载**
+
+
+
+##### 6-10 ResourceLoader的使用者-BeanDefinitionReader
+
+- **读取BeanDefinition**
+- **利用BeanDefinitionRegistry注册BeanDefinition**
+
+![](images\SpringIOC10.png)
+
+**几个关键的类：**
+
+- <span style="color:red">location</span>
+- <span style="color:red">Resource</span>
+- <span style="color:red">ResourceLoader</span>
+- <span style="color:red">BeanDefinitionReader</span>
+- <span style="color:red">BeanDefinitionRegistry</span>
+- <span style="color:red">DefaultListableBeanFactory</span>
+
+
+
+##### 6-11 BeanDefinition的注册
+
+```java
+# DefaultBeanDefinitionDocumentReader.java
+......
+// 向Spring IOC容器注册解析得到的BeanDefinition，这是BeanDefinition向IOC容器注册的入口
+BeanDefinitionReaderUtils.registerBeanDefinition(dbHolder, getReaderContext().getRegistry());    
+......    
+```
+
+```java
+#BeanDefinitionReaderUtils.java
+......
+// 将beanDefinition及其名字注册到容器里    
+String beanName = definitionHolder.getBeanName();    
+registry.registerBeanDefinition(beanName, definitionHolder.getBeanDefinition());    
+......    
+```
+
+```java
+#DefaultListableBeanFactory.java
+#registerBeanDefinition
+beanDefinitionMap.xxx    
+```
+
+
+
+##### 6-12 本章小结
+
+![](images\SpringIOC11.png)
+
+
+
+![](images\SpringIOC12.png)
+
+
+
+
+
+#### 第7章 详解SpringIoC容器的初始化 【打通refresh方法的全链路】
+
+##### 7-1 后置处理器之PostProcessor
+
+**本身也是一种需要注册到容器里的Bean**
+
+- <span style="color:red">其里面的方法会在特定的时机被容器调用</span>
+- <span style="color:red">实现不改变容器或者Bean核心逻辑的情况下对Bean进行扩展</span>
+- <span style="color:red">对Bean进行包装、影响其行为、修改Bean的内容等</span>
+
+
+
+###### 7-1-1 PostProcessor的种类
+
+**大类分为<span style="color:red">容器级别的后置处理器</span>以及<span style="color:red">Bean级别的后置处理器</span>**
+
+- <span style="color:red">BeanDefinitionRegistryPostProcessor</span>
+  - 可注册BeanDefinition
+  - 可以使用此将第三方框架的能力集成进spring
+- <span style="color:red">BeanFactoryPostProcessor</span>
+- <span style="color:red">BeanPostProcessor</span>
+  - 在每一个Bean初始化之前和之后执行，可以实现对Bean的包装
+  - postProcessBeforeInitialization
+  - postProcessAfterInitialization
+
+
+
+##### 7-2 Aware及其子接口
+
+**通过实现相关接口可以获取容器中的相关组件。**
+
+**从Bean里获取到的容器实例并对其进行操作。**
+
+![](images\SpringIOC13.png)
+
+
+
+##### 7-3 进攻refresh方法前必会知识之事件监听器模式
+
+###### 7-3-1 事件监听器模式
+
+**回调函数：**
+
+- 往组件注册自定义的方法以便组件在特定场景下调用
+
+**事件监听器模式：**
+
+- **监听器将监听感兴趣的事件，一旦事件发生，便做出响应**
+- <span style="color:red">事件源（Event Source）</span>
+- <span style="color:red">事件监听器（Event Listener）</span>
+- <span style="color:red">事件对象（Event Object）</span>
+
+```java
+@Data
+public class Event {
+    private String type;
+}
+```
+
+```java
+public interface EventListener {
+    public void processEvent(Event event);
+}
+```
+
+```java
+public class SingleClickEventListener implements EventListener {
+    @Override
+    public void processEvent(Event event) {
+        if("singleclick".equals(event.getType())) {
+            System.out.println("单击被触发")
+        }
+    }
+}
+```
+
+```java
+public class DoubleClickEventListener implements EventListener {
+    @Override
+    public void processEvent(Event event) {
+        if("doubleclick".equals(event.getType())) {
+            System.out.println("双击被触发")
+        }
+    }
+}
+```
+
+```java
+public class EventSource {
+    private List<EventListener> listenerList = new ArrayList<>();
+    
+    public void register(EventListener listener) {
+        listenerList.add(listener);
+    }
+    
+    public void publishEvent(Event event) {
+        for (EventListener listener.: listenerList) {
+            listener.processEvent(event);
+        }
+    }
+}
+```
+
+```java
+public class EventModeDemo {
+    EventSource eventSource = new EventSource();
+    SingleClickEventListener singleClickEventListener = new SingleClickEventListener();
+    DoubleClickEventListener doubleClickEventListener = new DoubleClickEventListener();
+    Event event = new Event();
+    event.setType("doubleclick");
+    eventSource.register(singleClickEventListener);
+    eventSource.register(doubleClickEventListener);
+    eventSource.publishEvent(event);
+}
+```
+
+
+
+###### 7-3-2 Spring的事件驱动模型
+
+**事件驱动模型的三大组成部分：**
+
+- <span style="color:red">事件：ApplicationEvent抽象类</span>
+
+  ![](images\SpringIOC14.png)
+
+- <span style="color:red">事件监听器：ApplicationListener</span>
+
+  ![](images\SpringIOC15.png)
+
+- <span style="color:red">事件发布器：Publisher以及Multicaster</span>
+
+  ![](images\SpringIOC16.png)
+
+  
+
+##### 7-5 Spring容器的刷新逻辑（5.0.9版本）
+
+- **<span style="color:red">1、prepareRefresh()：刷新前的工作准备</span>**
+- **<span style="color:red">2、obtainFreshBeanFactory()：获取子类刷新后的内部beanFactory实例</span>**
+- **<span style="color:red">3、prepareBeanFactory()：为容器注册必要的系统级别的Bean</span>**
+- **<span style="color:red">4、postProcessBeanFactory()：允许容器的子类去注册postProcessor</span>**
+- **<span style="color:red">5、invokeBeanFactoryPostProcessors()：调用容器注册的容器级别的后置处理器</span>**
+- **<span style="color:red">6、registerBeanPostProcessors()：向容器注册Bean级别的后置处理器</span>**
+- **<span style="color:red">7、initMessageSource()：初始化国际化配置</span>**
+- **<span style="color:red">8、initApplicationEventMulticaster()：初始化事件发布者组件</span>**
+- **<span style="color:red">9、onRefresh()：在单例Bean初始化之前预留给子类初始化其它特殊bean的途径</span>**
+- **<span style="color:red">10、registerListeners()：向前面的事件发布者组件注册事件监听</span>**
+- **<span style="color:red">11、finishBeanFactoryInitialization()：设置系统级别的服务，实例化所有非懒加载的单例</span>**
+- **<span style="color:red">12、finishRefresh()：触发初始化完成的回调方法，并发布容器刷新完成的事件给监听者</span>**
+- **<span style="color:red">13、resetCommonCaches()：重置Spring内核中的共用缓存</span>**
+
+
+
+###### 7-5-1 prepareRefresh()
+
+```
+// Prepare this context for refreshing.
+prepareRefresh();
+```
+
+```java
+	/**
+	 * Prepare this context for refreshing, setting its startup date and
+	 * active flag as well as performing any initialization of property sources.
+	 */
+	protected void prepareRefresh() {
+		this.startupDate = System.currentTimeMillis();
+		this.closed.set(false);
+		this.active.set(true);
+
+		if (logger.isInfoEnabled()) {
+			logger.info("Refreshing " + this);
+		}
+
+		// Initialize any placeholder property sources in the context environment
+		initPropertySources();
+
+		// Validate that all properties marked as required are resolvable
+		// see ConfigurablePropertyResolver#setRequiredProperties
+		getEnvironment().validateRequiredProperties();
+
+		// Allow for the collection of early ApplicationEvents,
+		// to be published once the multicaster is available...
+		this.earlyApplicationEvents = new LinkedHashSet<>();
+	}
+```
+
+
+
+###### 7-5-2 ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+
+**告诉子类启动refreshBeanFactory()方法，Bean定义资源文件的载入从子类的refreshBeanFactory()方法启动，里面有抽象方法。**
+**针对xml配置，最终创建内部容器，该容器负责Bean的创建与管理，此步会进行BeanDefinition的注册。**
+
+```
+// Tell the subclass to refresh the internal bean factory.
+ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+```
+
+```java
+	/**
+	 * Tell the subclass to refresh the internal bean factory.
+	 * @return the fresh BeanFactory instance
+	 * @see #refreshBeanFactory()
+	 * @see #getBeanFactory()
+	 */
+	protected ConfigurableListableBeanFactory obtainFreshBeanFactory() {
+		refreshBeanFactory();
+		ConfigurableListableBeanFactory beanFactory = getBeanFactory();
+		if (logger.isDebugEnabled()) {
+			logger.debug("Bean factory for " + getDisplayName() + ": " + beanFactory);
+		}
+		return beanFactory;
+	}
+```
+
+
+
+###### 7-5-3 prepareBeanFactory(beanFactory)
+
+```java
+// Prepare the bean factory for use in this context.
+prepareBeanFactory(beanFactory);
+```
+
+```java
+	/**
+	 * Configure the factory's standard context characteristics,
+	 * such as the context's ClassLoader and post-processors.
+	 * @param beanFactory the BeanFactory to configure
+	 */
+	protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+		// Tell the internal bean factory to use the context's class loader etc.
+		beanFactory.setBeanClassLoader(getClassLoader());
+		beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader()));
+		beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment()));
+
+		// Configure the bean factory with context callbacks.
+		beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this));
+		beanFactory.ignoreDependencyInterface(EnvironmentAware.class);
+		beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class);
+		beanFactory.ignoreDependencyInterface(ResourceLoaderAware.class);
+		beanFactory.ignoreDependencyInterface(ApplicationEventPublisherAware.class);
+		beanFactory.ignoreDependencyInterface(MessageSourceAware.class);
+		beanFactory.ignoreDependencyInterface(ApplicationContextAware.class);
+
+		// BeanFactory interface not registered as resolvable type in a plain factory.
+		// MessageSource registered (and found for autowiring) as a bean.
+		beanFactory.registerResolvableDependency(BeanFactory.class, beanFactory);
+		beanFactory.registerResolvableDependency(ResourceLoader.class, this);
+		beanFactory.registerResolvableDependency(ApplicationEventPublisher.class, this);
+		beanFactory.registerResolvableDependency(ApplicationContext.class, this);
+
+		// Register early post-processor for detecting inner beans as ApplicationListeners.
+		beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(this));
+
+		// Detect a LoadTimeWeaver and prepare for weaving, if found.
+		if (beanFactory.containsBean(LOAD_TIME_WEAVER_BEAN_NAME)) {
+			beanFactory.addBeanPostProcessor(new LoadTimeWeaverAwareProcessor(beanFactory));
+			// Set a temporary ClassLoader for type matching.
+			beanFactory.setTempClassLoader(new ContextTypeMatchClassLoader(beanFactory.getBeanClassLoader()));
+		}
+
+		// Register default environment beans.
+		if (!beanFactory.containsLocalBean(ENVIRONMENT_BEAN_NAME)) {
+			beanFactory.registerSingleton(ENVIRONMENT_BEAN_NAME, getEnvironment());
+		}
+		if (!beanFactory.containsLocalBean(SYSTEM_PROPERTIES_BEAN_NAME)) {
+			beanFactory.registerSingleton(SYSTEM_PROPERTIES_BEAN_NAME, getEnvironment().getSystemProperties());
+		}
+		if (!beanFactory.containsLocalBean(SYSTEM_ENVIRONMENT_BEAN_NAME)) {
+			beanFactory.registerSingleton(SYSTEM_ENVIRONMENT_BEAN_NAME, getEnvironment().getSystemEnvironment());
+		}
+	}
+```
+
+
+
+
+
+#### 第8章 精讲SpringIoC容器的依赖注入
+
+Spring在Bean实例的创建过程中做了很多精细化控制
+
+
+
+- **AbstractBeanFactory**
+  - **doGetBean：获取Bean实例**
+- **DefaultSingletonRegistry**
+  - **getSingleton：获取单例实例**
+  - **三级缓存：解决循环依赖**
+- **AbstractAutowiredCapableBeanFactory**
+  - **createBean：创建Bean实例的准备**
+  - **doCreateBean：创建Bean实例**
+  - **applyMergedBeanDefinitionPostProcessors：处理@Autowired以及@Value**
+  - **populateBean：给Bean实例注入属性值（依赖注入在此）**
+- **AutowiredAnnotationBeanPostProcessor**
+  - **postProcessorProperties：Autowired的依赖注入逻辑**
+- **DefaultListableBeanFactory**
+  - **doResolveDependency：依赖解析**
+- **DependencyDescriptor**
+  - **InjectionPotiont：创建依赖实例**
+
+
+
+##### 8-1 doGetBean逻辑
+
+1. **<span style="color:red">尝试从缓存获取Bean</span>**
+2. **<span style="color:red">循环依赖的判断</span>**
+3. **<span style="color:red">递归去父容器获取Bean实例</span>**
+4. **<span style="color:red">从当前容器获取BeanDefinition实例</span>**
+5. **<span style="color:red">递归实例化显示依赖的Bean depends-on</span>**
+6. **<span style="color:red">根据不同的Scope采用不同的策略创建Bean实例</span>**
+7. **<span style="color:red">对Bean进行类型检查</span>**
+
+
+
+**AbstractBeanFactory#doGetBean**
+
+```java
+protected <T> T doGetBean(final String name, @Nullable final Class<T> requiredType,
+			@Nullable final Object[] args, boolean typeCheckOnly) throws BeansException {
+		// 通过三种形式获取beanName
+    	// 一种是原始的beanName，一个是加了&的，一个是别名
+		final String beanName = transformedBeanName(name);
+		Object bean;
+
+		// Eagerly check singleton cache for manually registered singletons.
+    	// 尝试从单例缓存集合里获取bean实例，详解下一个方法描述
+		Object sharedInstance = getSingleton(beanName);
+    	// args之所以要为空，是因为如果有args，则需要做进一步赋值，因此无法直接返回
+		if (sharedInstance != null && args == null) {
+			if (logger.isDebugEnabled()) {
+                // 如果Bean还在创建中，则说明是循环引用
+				if (isSingletonCurrentlyInCreation(beanName)) {
+					logger.debug("Returning eagerly cached instance of singleton bean '" + beanName +
+							"' that is not fully initialized yet - a consequence of a circular reference");
+				}
+				else {
+					logger.debug("Returning cached instance of singleton bean '" + beanName + "'");
+				}
+			}
+            // 如果是普通bean，直接返回，如果是FactoryBean，则返回它的getObject
+			bean = getObjectForBeanInstance(sharedInstance, name, beanName, null);
+		}
+
+		else {
+			// Fail if we're already creating this bean instance:
+			// We're assumably within a circular reference.
+            // 如果scope为prototype并且显示还在创建中，则基本是循环依赖的情况
+            // 针对prototype的循环依赖，spring无解，直接抛出异常
+			if (isPrototypeCurrentlyInCreation(beanName)) {
+				throw new BeanCurrentlyInCreationException(beanName);
+			}
+
+			// Check if bean definition exists in this factory.
+			BeanFactory parentBeanFactory = getParentBeanFactory();
+			if (parentBeanFactory != null && !containsBeanDefinition(beanName)) {
+				// Not found -> check parent.
+				String nameToLookup = originalBeanName(name);
+				if (parentBeanFactory instanceof AbstractBeanFactory) {
+					return ((AbstractBeanFactory) parentBeanFactory).doGetBean(
+							nameToLookup, requiredType, args, typeCheckOnly);
+				}
+				else if (args != null) {
+					// Delegation to parent with explicit args.
+					return (T) parentBeanFactory.getBean(nameToLookup, args);
+				}
+				else {
+					// No args -> delegate to standard getBean method.
+					return parentBeanFactory.getBean(nameToLookup, requiredType);
+				}
+			}
+
+			if (!typeCheckOnly) {
+				markBeanAsCreated(beanName);
+			}
+
+			try {
+				final RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
+				checkMergedBeanDefinition(mbd, beanName, args);
+
+				// Guarantee initialization of beans that the current bean depends on.
+				String[] dependsOn = mbd.getDependsOn();
+				if (dependsOn != null) {
+					for (String dep : dependsOn) {
+						if (isDependent(beanName, dep)) {
+							throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+									"Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
+						}
+						registerDependentBean(dep, beanName);
+						try {
+							getBean(dep);
+						}
+						catch (NoSuchBeanDefinitionException ex) {
+							throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+									"'" + beanName + "' depends on missing bean '" + dep + "'", ex);
+						}
+					}
+				}
+
+				// Create bean instance.
+				if (mbd.isSingleton()) {
+					sharedInstance = getSingleton(beanName, () -> {
+						try {
+							return createBean(beanName, mbd, args);
+						}
+						catch (BeansException ex) {
+							// Explicitly remove instance from singleton cache: It might have been put there
+							// eagerly by the creation process, to allow for circular reference resolution.
+							// Also remove any beans that received a temporary reference to the bean.
+							destroySingleton(beanName);
+							throw ex;
+						}
+					});
+					bean = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
+				}
+
+				else if (mbd.isPrototype()) {
+					// It's a prototype -> create a new instance.
+					Object prototypeInstance = null;
+					try {
+						beforePrototypeCreation(beanName);
+						prototypeInstance = createBean(beanName, mbd, args);
+					}
+					finally {
+						afterPrototypeCreation(beanName);
+					}
+					bean = getObjectForBeanInstance(prototypeInstance, name, beanName, mbd);
+				}
+
+				else {
+					String scopeName = mbd.getScope();
+					final Scope scope = this.scopes.get(scopeName);
+					if (scope == null) {
+						throw new IllegalStateException("No Scope registered for scope name '" + scopeName + "'");
+					}
+					try {
+						Object scopedInstance = scope.get(beanName, () -> {
+							beforePrototypeCreation(beanName);
+							try {
+								return createBean(beanName, mbd, args);
+							}
+							finally {
+								afterPrototypeCreation(beanName);
+							}
+						});
+						bean = getObjectForBeanInstance(scopedInstance, name, beanName, mbd);
+					}
+					catch (IllegalStateException ex) {
+						throw new BeanCreationException(beanName,
+								"Scope '" + scopeName + "' is not active for the current thread; consider " +
+								"defining a scoped proxy for this bean if you intend to refer to it from a singleton",
+								ex);
+					}
+				}
+			}
+			catch (BeansException ex) {
+				cleanupAfterBeanCreationFailure(beanName);
+				throw ex;
+			}
+		}
+
+		// Check if required type matches the type of the actual bean instance.
+		if (requiredType != null && !requiredType.isInstance(bean)) {
+			try {
+				T convertedBean = getTypeConverter().convertIfNecessary(bean, requiredType);
+				if (convertedBean == null) {
+					throw new BeanNotOfRequiredTypeException(name, requiredType, bean.getClass());
+				}
+				return convertedBean;
+			}
+			catch (TypeMismatchException ex) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Failed to convert bean '" + name + "' to required type '" +
+							ClassUtils.getQualifiedName(requiredType) + "'", ex);
+				}
+				throw new BeanNotOfRequiredTypeException(name, requiredType, bean.getClass());
+			}
+		}
+		return (T) bean;
+	}
+```
+
+
+
+**DefaultSingletonBeanRegistry#getSingleton**
+
+```java
+	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
+        // 尝试从一级缓存里面获取完备的Bean
+		Object singletonObject = this.singletonObjects.get(beanName);
+        // 如果完备的单例还没有创建出来，创建中的Bean的名字会被保存在singletonsCurrentlyInCreation中
+        // 因此看看是否正在创建
+		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+            // 尝试给一级缓存对象加锁，因为接下来就要对缓存对象操作了
+			synchronized (this.singletonObjects) {
+                // 尝试从二级缓存earlySingletonObjects这个存储还没进行属性添加操作的Bean实例缓存中获取
+				singletonObject = this.earlySingletonObjects.get(beanName);
+                // 如果还没有获取到并且第二个参数为true，为true则表示bean允许被循环引用
+				if (singletonObject == null && allowEarlyReference) {
+                    // 从三级缓存singletonFactories这个ObjectFactory实例的缓存里尝试获取创建此Bean的单例工厂实例
+					ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
+					if (singletonFactory != null) {
+                        // 调用单例工厂的getObject方法返回对象实例
+						singletonObject = singletonFactory.getObject();
+                        // 将实例放入二级缓存里
+						this.earlySingletonObjects.put(beanName, singletonObject);
+                        // 从三级缓存里移除
+						this.singletonFactories.remove(beanName);
+					}
+				}
+			}
+		}
+		return singletonObject;
+	}
+```
+
+
+
+##### 8-2 createBean逻辑
+
+......
+
+
+
+##### 8-3 @Autowired以及@Value
+
+主要基于AutowiredAnnotationBeanPostProcessor
+
+
+
+##### 8-4 单例循环依赖
+
+**populateBean() 递归 createBean 处理循环依赖**
+
+![](images\循环依赖1.png)
+
+
+
+##### 8-5 面试常问问题之Spring对循环依赖的支持情况
+
+**循环依赖的情况如下：**
+
+- <span style="color:red">构造器循环依赖（singleton、prototype）</span>
+- <span style="color:red">Setter注入循环依赖（singleton、prototype）</span>
+
+
+
+- **prototype不支持循环依赖**
+  - 因为没有设置三级缓存进行支持
+  - 只能通过将Bean名字放入缓存里阻断无限循环
+- **构造器循环依赖不支持**
+
+
+
+
+
+#### 第9章 自研框架AOP的讲解与实现
+
+##### 9-1 AOP相关概念
+
+- 切面Aspect：将横切关注点逻辑进行模块化封装的实体对象
+- 通知Advice：好比是Class里面的方法，还定义了织入逻辑的时机
+- 连接点Joinpoint：允许使用Advice的地方
+- SpringAOP默认只支持方法级别的Joinpoint
+- 切入点Pointcut：定义一系列规则对Joinpoint进行筛选
+- 目标对象Target：符合Pointcut条件，要被织入横切逻辑的对象
+
+
+
+##### 9-2 Advice的种类
+
+- **BeforeAdvice**：在JoinPoint前被执行的Advice
+- **AfterAdvice**：好比try...catch...finally里面的finally
+- **AfterReturningAdvice**：在Joinpoint执行流程正常返回后被执行
+- **AfterThrowingAdvice**：Joinpoint执行过程中抛出异常才会触发
+- **AroundAdvice**：在Joinpoint前和后都指向，最常用的Advice
+
+![](images\单个Aspect的执行顺序.png)
+
+![](images\多个Aspect的执行顺序2.png)
+
+
+
+##### 9-3 SpringAOP的实现之JDK动态代理
+
+- **寻求改进**
+  - <span style="color:red">溯源ClassLoader</span>
+    - 通过带有包名的类来获取对应class文件的二进制字节流
+    - 根据读取的字节流，将代表的静态存储结构转化为运行时数据结构
+    - 生成一个代表该类的Class对象，作为方法区该类的数据访问入口
+  
+- **改进的切入点**
+  - <span style="color:red">根据一定规则去改动或者生成新的字节流，将切面逻辑织入其中</span>
+    - 行之有效的方案就是取代被代理类的动态代理机制
+    - 根据接口或者目标类，计算出代理类的字节码并加载到JVM中去
+  
+- **JDK动态代理**
+
+  - 程序运行时动态生成类的字节码，并加载到JVM中
+
+  - 要求【被代理的类】必须实现接口
+
+  - 并不要求【代理对象】去实现接口，所以可以复用代理对象的逻辑
+
+    ```java
+    public class JdkDynamicProxyUtil {
+        public static <T> T newProxyInstance(T targetObject, InvocationHandler handler) {
+            ClassLoader classLoader = targetObject.getClass().getClassLoader();
+            Class<?>[] interfaces = targetObject.getClass().getInterfaces();
+            return (T) Proxy.newProxyInstance(classLoader, interfaces, handler);
+        }
+    
+    }
+    ```
+
+    ```java
+    /**
+     * 织入的切面逻辑
+     */
+    public class AlipayInvocationHandler implements InvocationHandler {
+    
+        private Object targetObject;
+    
+        public AlipayInvocationHandler(Object targetObject) {
+            this.targetObject = targetObject;
+        }
+    
+        @Override
+        public Object invoke(Object o, Method method, Object[] args) throws Throwable {
+            beforePay();
+            Object result = method.invoke(targetObject, args);
+            afterPay();
+            return result;
+        }
+    
+        private void beforePay() {
+            System.out.println("~~~~取款~~~~");
+        }
+    
+        private void afterPay() {
+            System.out.println("~~~~支付~~~~");
+        }
+    }
+    ```
+
+    
+
+##### 9-4 SpringAOP的实现原理之CGLIB动态代理
+
+**代码生成库：Code Generation Library**
+
+- 不要求被代理类实现接口
+- 内部主要封装了ASM Java字节码操控框架
+- 动态生成子类以覆盖非final的方法，绑定钩子回调自定义拦截器
+
+```xml
+        <dependency>
+            <groupId>cglib</groupId>
+            <artifactId>cglib</artifactId>
+            <version>3.2.9</version>
+        </dependency>
+```
+
+```java
+public class AlipayMethodInterceptor implements MethodInterceptor {
+
+    @Override
+    public Object intercept(Object o, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
+        beforePay();
+        Object result = methodProxy.invokeSuper(o, args);
+        afterPay();
+        return result;
+    }
+
+    private void beforePay() {
+        System.out.println("取钱");
+    }
+
+    private void afterPay() {
+        System.out.println("花钱");
+    }
+
+}
+```
+
+```java
+public class CglibUtil {
+    public static <T> T create(T targetObject, MethodInterceptor methodInterceptor) {
+        return (T) Enhancer.create(targetObject.getClass(), methodInterceptor);
+    }
+}
+```
+
+```java
+public class Demo {
+    public static void main(String[] args) {
+        MethodInterceptor methodInterceptor = new AlipayMethodInterceptor();
+        CommonPay commonPay = CglibUtil.create(new CommonPay(), methodInterceptor);
+        commonPay.pay();
+    }
+
+    static class CommonPay {
+        public void pay() {
+            System.out.println("开始~~~~");
+        }
+    }
+}
+```
+
+
+
+##### 9-5 JDK动态代理和CGLIB
+
+**JDK动态代理的优势：**
+
+- JDK原生，在JVM里运行较为可靠
+- 平滑支持JDK版本的升级
+
+**CGLIB的优势：**
+
+- 被代理对象无需实现接口，能实现代理类的无侵入
+
+**SpringAOP的底层机制：**
+
+- <span style="color:red">CGLIB和JDK动态代理共存</span>
+- 默认策略：Bean实现了接口则用JDK，否则使用CGLIB
+
+
+
+##### 9-8 实现自研框架AOP1.0
+
+**使用CGLIB来实现：不需要业务类实现接口，相对灵活**
+
+- 解决标记的问题，定义横切逻辑的骨架
+- 定义Aspect横切逻辑以及被代理方法的执行顺序
+- 将横切逻辑织入被代理的对象以生成动态代理对象
+
+
+
+###### 9-8-1 解决横切逻辑的标记问题以及定义Aspect骨架
+
+- 定义与横切逻辑相关的注解
+- 定义供外部使用的横切逻辑骨架
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Aspect {
+    Class<? extends Annotation> value();
+}
+```
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Order {
+    int value();
+}
+```
+
+```java
+public abstract class DefaultAspect {
+
+    /**
+     * 事前拦截
+     * @param targetClass 被代理的目标类
+     * @param method 被代理的目标方法
+     * @param args 被代理的目标方法对应的参数列表
+     * @throws Throwable
+     */
+    public void before(Class<?> targetClass, Method method, Object[] args) throws Throwable {
+
+    }
+
+    /**
+     * 事后拦截
+     * @param targetClass 被代理的目标类
+     * @param method 被代理的目标方法
+     * @param args 被代理的目标方法对应的参数列表
+     * @param returnValue 被代理的目标方法执行后的返回值
+     * @throws Throwable
+     */
+    public Object afterReturning(Class<?> targetClass, Method method, Object[] args, Object returnValue) throws Throwable {
+        return returnValue;
+    }
+
+    /**
+     *
+     * @param targetClass 被代理的目标类
+     * @param method 被代理的目标方法
+     * @param args 被代理的目标方法对应的参数列表
+     * @param e 被代理的目标方法抛出的异常
+     * @throws Throwable
+     */
+    public void afterThrowing(Class<?> targetClass, Method method, Object[] args, Throwable e) throws Throwable {
+
+    }
+
+}
+```
+
+
+
+###### 9-8-2 实现Aspect横切逻辑以及被代理方法的定序执行
+
+- 创建MethodInterceptor的实现类
+
+  ```java
+  public class AspectListExecutor implements MethodInterceptor {
+  
+      // 被代理的类
+      private Class<?> targetClass;
+  
+      @Getter
+      List<AspectInfo> sortedAspectInfoList;
+  
+      public AspectListExecutor(Class<?> targetClass, List<AspectInfo> aspectInfoList) {
+          this.targetClass = targetClass;
+          this.sortedAspectInfoList = sortAspectInfoList(aspectInfoList);
+      }
+  
+      /**
+       * 按照order的值进行升序排序，确保order值小的aspect先被织入
+       * @param aspectInfoList
+       * @return
+       */
+      private List<AspectInfo> sortAspectInfoList(List<AspectInfo> aspectInfoList) {
+          Collections.sort(aspectInfoList, Comparator.comparingInt(AspectInfo::getOrderIndex));
+          return aspectInfoList;
+      }
+  
+  
+      @Override
+      public Object intercept(Object proxy, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
+          Object returnValue = null;
+          if (ValidationUtil.isEmpty(sortedAspectInfoList)) {return returnValue;}
+          //1、按照order的顺序升序执行完所有Aspect的before方法
+          invockBeforeAdvices(method, args);
+  
+          try {
+              //2、执行被代理类的方法
+              returnValue = methodProxy.invokeSuper(proxy, args);
+              //3、如果被代理方法正常返回，则按照order的顺序降序执行完所有Aspect的afterReturning方法
+              returnValue = invockAfterReturningAdvices(method, args, returnValue);
+          } catch (Exception e) {
+              //4、如果被代理方法抛出异常，则按照order的顺序降序执行完所有Aspect的afterThrowing方法
+              invockeThrowingAdvices(method, args, e);
+          }
+  
+          return returnValue;
+      }
+  
+      //4、如果被代理方法抛出异常，则按照order的顺序降序执行完所有Aspect的afterThrowing方法
+      private void invockeThrowingAdvices(Method method, Object[] args, Exception e) throws Throwable {
+          for (int i = sortedAspectInfoList.size() - 1; i >= 0; i--) {
+              sortedAspectInfoList.get(i).getAspectObject()
+                      .afterThrowing(targetClass.getClass(), method, args, e);
+          }
+      }
+  
+      //3、如果被代理方法正常返回，则按照order的顺序降序执行完所有Aspect的afterReturning方法
+      private Object invockAfterReturningAdvices(Method method, Object[] args, Object returnValue) throws Throwable {
+          Object result = null;
+          for (int i = sortedAspectInfoList.size() - 1; i >= 0; i--) {
+              result = sortedAspectInfoList.get(i).getAspectObject()
+                      .afterReturning(targetClass.getClass(), method, args, returnValue);
+          }
+          return result;
+      }
+  
+      //1、按照order的顺序升序执行完所有Aspect的before方法
+      private void invockBeforeAdvices(Method method, Object[] args) throws Throwable {
+          for (AspectInfo aspectInfo : sortedAspectInfoList) {
+              aspectInfo.getAspectObject().before(targetClass.getClass(), method, args);
+          }
+      }
+  }
+  ```
+
+  ```java
+  public class ProxyCreator {
+      public static Object createProxy(Class<?> targetClass, MethodInterceptor methodInterceptor) {
+          return Enhancer.create(targetClass, methodInterceptor);
+      }
+  }
+  ```
+
+- 定义必要的成员变量——被代理的类以及Aspect列表
+
+  ```java
+  @AllArgsConstructor
+  @Getter
+  public class AspectInfo {
+      private int orderIndex;
+      private DefaultAspect aspectObject;
+  }
+  ```
+
+- 按照Order对Aspect进行排序
+
+- 实现对横切逻辑以及被代理对象方法的定序执行
+
+  ```java
+  public class AspectWeaver {
+      private BeanContainer beanContainer;
+      public AspectWeaver() {
+          this.beanContainer = BeanContainer.getInstance();
+      }
+  
+      public void doAop() {
+          //1、获取所有的切面类
+          Set<Class<?>> aspectSet = beanContainer.getClassesByAnnotation(Aspect.class);
+  
+          //2、将切面类按照不同的织入目标进行切分
+          Map<Class<? extends Annotation>, List<AspectInfo>> categorizedMap = new HashMap<>();
+          if (ValidationUtil.isEmpty(aspectSet)) {
+              return;
+          }
+  
+          for (Class<?> aspectClass : aspectSet) {
+              if (verifyAspect(aspectClass)) {
+                  categorizeAspect(categorizedMap, aspectClass);
+              } else {
+                  throw new RuntimeException("@Aspect and @Order have not been added to the Aspect class," +
+                          "or Aspect class does not extends from DefaultAspect, or the value in Aspect Tag equals @Aspect");
+              }
+          }
+  
+          //3、按照不同的织入目标分别去按织入Aspect的逻辑
+          if (ValidationUtil.isEmpty(categorizedMap)) {
+              return;
+          }
+          for (Class<? extends Annotation> category : categorizedMap.keySet()) {
+              weaveByCategory(category, categorizedMap.get(category));
+          }
+      }
+  
+      private void weaveByCategory(Class<? extends Annotation> category, List<AspectInfo> aspectInfos) {
+          //1.获取被代理类的集合
+          Set<Class<?>> classSet = beanContainer.getClassesByAnnotation(category);
+          if (ValidationUtil.isEmpty(classSet)) {
+              return;
+          }
+  
+          //2.遍历被代理类，分别为每个被代理类生成动态代理实例
+          for (Class<?> targetClass : classSet) {
+              //创建动态代理对象
+              AspectListExecutor aspectListExecutor = new AspectListExecutor(targetClass, aspectInfos);
+              Object proxyBean = ProxyCreator.createProxy(targetClass, aspectListExecutor);
+              //3.将动态代理对象实例添加到容器里，取代未被代理前的类实例
+              beanContainer.addBean(targetClass, proxyBean);
+          }
+  
+  
+      }
+  
+      //2.将切面类按照不同的织入目标进行切分
+      private void categorizeAspect(Map<Class<? extends Annotation>, List<AspectInfo>> categorizedMap, Class<?> aspectClass) {
+          Order orderTag = aspectClass.getAnnotation(Order.class);
+          Aspect aspectTag = aspectClass.getAnnotation(Aspect.class);
+          DefaultAspect aspect = (DefaultAspect) beanContainer.getBean(aspectClass);
+          AspectInfo aspectInfo = new AspectInfo(orderTag.value(), aspect);
+          if (!categorizedMap.containsKey(aspectTag.value())) {
+              //如果织入的joinpoint第一次出现，则以该joinpoint为key，以新创建的List<AspectInfo>为value
+              List<AspectInfo> aspectInfoList = new ArrayList<>();
+              aspectInfoList.add(aspectInfo);
+              categorizedMap.put(aspectTag.value(), aspectInfoList);
+          } else {
+              //如果织入的joinpoint不是第一次出现，则往joinpoint对应的value里面添加新的Aspect逻辑
+              List<AspectInfo> aspectInfoList = categorizedMap.get(aspectTag.value());
+              aspectInfoList.add(aspectInfo);
+          }
+      }
+  
+      //框架中一定要遵守给Aspect类添加@Aspect和@Order标签的规范，同时必须继承自DefaultAspect.class
+      //此外，@Aspect的属性值不能是它本身
+      private boolean verifyAspect(Class<?> aspectClass) {
+          return aspectClass.isAnnotationPresent(Aspect.class) &&
+                  aspectClass.isAnnotationPresent(Order.class) &&
+                  DefaultAspect.class.isAssignableFrom(aspectClass) &&
+                  aspectClass.getAnnotation(Aspect.class).value() != Aspect.class;
+      }
+  }
+  ```
+
+- 测试
+
+  ```java
+  public class AspectWeaverTest {
+  
+      @DisplayName("织入通用逻辑测试：dopAop")
+      @Test
+      public void doAopTest() {
+          BeanContainer beanContainer = BeanContainer.getInstance();
+          beanContainer.loadBeans("com.melon");
+          //先aop，使对应的对象都为代理对象，再ioc
+          new AspectWeaver().doAop();
+          new DependencyInjector().doIoc();
+          HeadLineOperationController headLineOperationController = (HeadLineOperationController) beanContainer.getBean(HeadLineOperationController.class);
+          headLineOperationController.addHeadLine(null, null);
+      }
+  }
+  ```
+
+  
+
+##### 9-9 自研框架的AOP1.0待改进的地方
+
+- Aspect只支持对被某个标签标记的类进行横切逻辑的织入
+- 需要披上AspectJ的外衣
