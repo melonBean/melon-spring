@@ -9,6 +9,7 @@ import org.melonframework.util.ValidationUtil;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -41,7 +42,11 @@ public class AspectListExecutor implements MethodInterceptor {
     @Override
     public Object intercept(Object proxy, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
         Object returnValue = null;
-        if (ValidationUtil.isEmpty(sortedAspectInfoList)) {return returnValue;}
+        //根据方法做精确筛选
+        collectAccurateMatchedAspectList(method);
+        if (ValidationUtil.isEmpty(sortedAspectInfoList)) {
+            return methodProxy.invokeSuper(proxy, args);
+        }
         //1、按照order的顺序升序执行完所有Aspect的before方法
         invockBeforeAdvices(method, args);
 
@@ -56,6 +61,19 @@ public class AspectListExecutor implements MethodInterceptor {
         }
 
         return returnValue;
+    }
+
+    private void collectAccurateMatchedAspectList(Method method) {
+        if (ValidationUtil.isEmpty(sortedAspectInfoList)) {
+            return;
+        }
+        Iterator<AspectInfo> it = sortedAspectInfoList.iterator();
+        while (it.hasNext()) {
+            AspectInfo aspectInfo = it.next();
+            if (!aspectInfo.getPointcutLocator().accurateMatches(method)) {
+                it.remove();
+            }
+        }
     }
 
     //4、如果被代理方法抛出异常，则按照order的顺序降序执行完所有Aspect的afterThrowing方法

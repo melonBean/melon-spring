@@ -12,7 +12,8 @@ import java.lang.reflect.Method;
  * @author czm 2020/11/1.
  */
 @Slf4j
-@Aspect(value = Controller.class)
+//@Aspect(value = Controller.class)
+@Aspect(pointcut = "execution(* com.imooc.controller.frontend.*.*(..))*")
 @Order(1)
 public class ControllerTimeCalculatorAspect extends DefaultAspect {
 

@@ -22,6 +22,44 @@ public class AspectWeaver {
     public void doAop() {
         //1、获取所有的切面类
         Set<Class<?>> aspectSet = beanContainer.getClassesByAnnotation(Aspect.class);
+        if (ValidationUtil.isEmpty(aspectSet)) {
+            return;
+        }
+
+        //2、拼装AspectInfoList
+        List<AspectInfo> aspectInfoList = packAspectInfoList(aspectSet);
+
+        //3、遍历容器里的类
+        Set<Class<?>> classSet = beanContainer.getClasses();
+        for (Class<?> targetClass : classSet) {
+            //排除AspectClass自身
+            if (targetClass.isAnnotationPresent(Aspect.class)) {
+                continue;
+            }
+            //4、粗筛选符合条件的Aspect
+            List<AspectInfo> roughMatchedAspectList = collectRoughMatchedAspectListForSpecificClass(aspectInfoList, targetClass);
+
+            //5、尝试进行Aspect的织入
+            wrapIfNecessary(roughMatchedAspectList, targetClass);
+        }
+
+
+    }
+
+    private void wrapIfNecessary(List<AspectInfo> roughMatchedAspectList, Class<?> targetClass) {
+    }
+
+    private List<AspectInfo> collectRoughMatchedAspectListForSpecificClass(List<AspectInfo> aspectInfoList, Class<?> targetClass) {
+    }
+
+    private List<AspectInfo> packAspectInfoList(Set<Class<?>> aspectSet) {
+        List<AspectInfo> aspectInfoList = new ArrayList<>();
+    }
+
+
+/*    public void doAop() {
+        //1、获取所有的切面类
+        Set<Class<?>> aspectSet = beanContainer.getClassesByAnnotation(Aspect.class);
 
         //2、将切面类按照不同的织入目标进行切分
         Map<Class<? extends Annotation>, List<AspectInfo>> categorizedMap = new HashMap<>();
@@ -91,5 +129,5 @@ public class AspectWeaver {
                 aspectClass.isAnnotationPresent(Order.class) &&
                 DefaultAspect.class.isAssignableFrom(aspectClass) &&
                 aspectClass.getAnnotation(Aspect.class).value() != Aspect.class;
-    }
+    }*/
 }

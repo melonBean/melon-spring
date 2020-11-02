@@ -9,6 +9,7 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Aspect {
 
-    Class<? extends Annotation> value();
+    //Class<? extends Annotation> value();
 
+    String pointcut();
 }

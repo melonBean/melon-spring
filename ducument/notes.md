@@ -2197,3 +2197,68 @@ public abstract class DefaultAspect {
 
 - Aspect只支持对被某个标签标记的类进行横切逻辑的织入
 - 需要披上AspectJ的外衣
+
+
+
+##### 9-10 改进自研框架的调研
+
+###### 9-10-1 参考SpringAOP的发展史
+
+- SpringAOP1.0是由Spring自研的
+- 使用起来不是很方便，需要实现各种各样的接口，并继承指定的类
+- SpringAOP2.0集成了AspectJ，复用AspectJ的语法树
+
+
+
+###### 9-10-2 AspectJ框架
+
+**提供了完整的AOP解决方案，是AOP的Java实现版本**
+
+- 定义切面语法以及切面语法的解析机制
+
+- 提供了强大的织入工具
+
+  
+
+![](images\AspectJ1.png)
+
+
+
+**AspectJ框架的织入时机：静态织入和LTW**
+
+- 编译时织入：利用ajc，将切面逻辑织入到类里生成class文件
+- 编译后织入：利用ajc，修改javac编译出来的class文件
+- 类加载期织入：利用java agent，在类加载的时候织入切面逻辑
+
+
+
+###### 9-10-3 SpringAOP2.0
+
+**仅仅用到了AspectJ的切面语法，并没有使用ajc编译工具**
+
+- 避免增加用户的学习成本
+- 只是默认不使用，如果想用ajc还是可以引入的
+- 织入机制沿用自己的CGLIB和JDK动态代理机制
+
+
+
+##### 9-11 自研框架AOP2.0的实现
+
+```xml
+        <!-- https://mvnrepository.com/artifact/org.aspectj/aspectjweaver -->
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>1.9.5</version>
+            <scope>runtime</scope>
+        </dependency>
+```
+
+
+
+###### 9-11-1 折衷方案改进框架里的AOP
+
+**使用最小的改造成本，换取尽可能大的收益---理清核心诉求**
+
+- 让Pointcut更加灵活
+- 调研结果：只需要引入Aspect的切面表达式和相关的定位解析机制
